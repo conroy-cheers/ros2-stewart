@@ -5,9 +5,11 @@
 #include <chrono>
 #include <vector>
 #include <string>
+#include <functional>
 
 #include "rclcpp/rclcpp.hpp"
-#include "std_msgs/msg/float64.hpp"
+#include "std_msgs/msg/float32.hpp"
+#include "std_srvs/srv/set_bool.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 
 
@@ -22,34 +24,65 @@ class StewartNode : public rclcpp::Node
 {
 public:
   StewartNode()
-  : Node("stewart_kinematics_node"), config(hexkins::HexapodConfig())
+  : Node("stewart_kinematics_node", "stewart"), config(hexkins::HexapodConfig())
   {
     for (int i = 0; i < num_struts; ++i) {
-      std::stringstream topic_name;
-      topic_name << "~/strut_" << i << "/target_position";
-      std::string topic = topic_name.str();
-      auto pub = this->create_publisher<std_msgs::msg::Float64>(topic, 10);
+      std::stringstream topic_base;
+      topic_base << "arm_" << i << "/";
+      std::string topic = topic_base.str();
+
+      auto pub = this->create_publisher<std_msgs::msg::Float32>(topic + "position_target", 10);
       strut_publishers.push_back(pub);
+
+      auto sub = this->create_subscription<std_msgs::msg::Float32>(
+        topic + "current_position",
+        10,
+        [this, i](std_msgs::msg::Float32::UniquePtr msg) {
+          RCLCPP_INFO(this->get_logger(), "Received %f for strut %d", msg->data, i);
+        }
+      );
+      strut_subscribers.push_back(sub);
+
+      auto free_move_srv_client = this->create_client<std_srvs::srv::SetBool>(
+        topic + "set_free_move");
+      strut_free_move_clients.push_back(free_move_srv_client);
     }
 
     pose_sub = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-      "~/target_pose", 10, std::bind(&StewartNode::pose_callback, this, _1));
+      "target_pose", 10, std::bind(&StewartNode::pose_callback, this, _1));
+
+    free_move_service = this->create_service<std_srvs::srv::SetBool>(
+      "set_free_move",
+      [this](
+        const std_srvs::srv::SetBool::Request::SharedPtr request,
+        std_srvs::srv::SetBool::Response::SharedPtr response) {
+        for (auto & client : this->strut_free_move_clients) {
+          auto result = client->async_send_request(request);
+          auto call_r = rclcpp::spin_until_future_complete(shared_from_this(), result, 1s);
+          if (call_r != rclcpp::FutureReturnCode::SUCCESS) {
+            // call failed, time to return
+            response->success = false;
+            return;
+          }
+        }
+        response->success = true;
+      });
 
     config.base_joints = {{
-      {2.57940852063914, 0.797904557985617, 0},
-      {1.98070987733051, 1.83488102661872, 0},
-      {-1.98070987733051, 1.83488102661872, 0},
-      {-2.57940852063914, 0.797904557985617, 0},
-      {-0.598698643308632, -2.63278558460434, 0},
-      {0.598698643308631, -2.63278558460434, 0},
+      {273.001, -55.310, 0},
+      {88.601, 264.081, 0},
+      {-88.601, 264.081, 0},
+      {-273.001, -55.310, 0},
+      {-184.400, -208.771, 0},
+      {184.400, -208.771, 0},
     }};
     config.platform_joints = {{
-      {0.955336489125606, -0.295520206661340, 0},
-      {0.221740238262456, 0.975105772075681, 0},
-      {-0.221740238262455, 0.975105772075681, 0},
-      {-0.955336489125606, -0.295520206661339, 0},
-      {-0.733596250863151, -0.679585565414341, 0},
-      {0.733596250863150, -0.679585565414341, 0},
+      {79.748, 17.685, 20},
+      {57.039, 60.229, 20},
+      {-55.187, 60.229, 20},
+      {-79.748, 17.685, 20},
+      {-24.559, -77.912, 20},
+      {24.559, -77.912, 20},
     }};
     config.kins_max_iterations = 1000;
     config.kins_fwd_max_retries = 20;
@@ -69,15 +102,19 @@ private:
       msg->pose.orientation.z});
     auto struts = hexkins::inverse_kinematics(config, pos, ori);
     for (int i = 0; i < num_struts; ++i) {
-      auto message = std_msgs::msg::Float64();
+      auto message = std_msgs::msg::Float32();
       message.data = struts[i];
       RCLCPP_INFO(this->get_logger(), "Publishing on %d: '%f'", i, message.data);
       strut_publishers[i]->publish(message);
     }
   }
 
-  std::vector<rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr> strut_publishers;
+  std::vector<rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr> strut_publishers;
+  std::vector<rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr> strut_subscribers;
+  std::vector<rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr> strut_free_move_clients;
+
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr pose_sub;
+  rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr free_move_service;
 
   hexkins::HexapodConfig config;
 };

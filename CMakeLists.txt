@@ -19,6 +19,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 
 # FetchContent added in CMake 3.11, downloads during the configure step
@@ -37,7 +38,7 @@ target_include_directories(
     $<INSTALL_INTERFACE:include>
     hexapod_kinematics)
 target_link_libraries(stewart_kinematics_node hexapod_kinematics)
-ament_target_dependencies(stewart_kinematics_node hexapod_kinematics rclcpp std_msgs geometry_msgs)
+ament_target_dependencies(stewart_kinematics_node hexapod_kinematics rclcpp std_msgs geometry_msgs std_srvs)
 
 install(TARGETS stewart_kinematics_node DESTINATION lib/${PROJECT_NAME})
 
