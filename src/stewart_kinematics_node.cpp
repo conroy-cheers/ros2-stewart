@@ -31,12 +31,13 @@ public:
       topic_base << "arm_" << i << "/";
       std::string topic = topic_base.str();
 
-      auto pub = this->create_publisher<std_msgs::msg::Float32>(topic + "position_target", 10);
+      auto pub = this->create_publisher<std_msgs::msg::Float32>(
+        topic + "position_target", rclcpp::QoS(10).best_effort());
       strut_publishers.push_back(pub);
 
       auto sub = this->create_subscription<std_msgs::msg::Float32>(
         topic + "current_position",
-        10,
+        rclcpp::QoS(10).best_effort(),
         [this, i](std_msgs::msg::Float32::UniquePtr msg) {
           RCLCPP_INFO(this->get_logger(), "Received %f for strut %d", msg->data, i);
         }
