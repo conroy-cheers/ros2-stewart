@@ -29,7 +29,6 @@ fetchcontent_declare(
   GIT_REPOSITORY https://github.com/conroy-cheers/hexapod_kinematics.git
   GIT_TAG master)
 fetchcontent_makeavailable(hexapod_kinematics)
-find_package(hexapod_kinematics REQUIRED)
 
 add_executable(stewart_kinematics_node src/stewart_kinematics_node.cpp)
 target_include_directories(
@@ -38,7 +37,7 @@ target_include_directories(
     $<INSTALL_INTERFACE:include>
     hexapod_kinematics)
 target_link_libraries(stewart_kinematics_node hexapod_kinematics)
-ament_target_dependencies(stewart_kinematics_node hexapod_kinematics rclcpp std_msgs geometry_msgs std_srvs)
+ament_target_dependencies(stewart_kinematics_node rclcpp std_msgs geometry_msgs std_srvs)
 
 install(TARGETS stewart_kinematics_node DESTINATION lib/${PROJECT_NAME})
 
