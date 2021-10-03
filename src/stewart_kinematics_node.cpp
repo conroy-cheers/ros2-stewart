@@ -9,6 +9,7 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/float32.hpp"
+#include "std_msgs/msg/bool.hpp"
 #include "std_srvs/srv/set_bool.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 
@@ -28,7 +29,7 @@ public:
   {
     for (int i = 0; i < num_struts; ++i) {
       std::stringstream topic_base;
-      topic_base << "arm_" << i << "/";
+      topic_base << "arm_" << i + 1 << "/";  // arm ID's use 1-based index
       std::string topic = topic_base.str();
 
       auto pub = this->create_publisher<std_msgs::msg::Float32>(
@@ -39,13 +40,13 @@ public:
         topic + "current_position",
         rclcpp::QoS(10).best_effort(),
         [this, i](std_msgs::msg::Float32::UniquePtr msg) {
-          RCLCPP_INFO(this->get_logger(), "Received %f for strut %d", msg->data, i);
+          RCLCPP_INFO(this->get_logger(), "Received %f for strut %d", msg->data, i + 1);
         }
       );
       strut_subscribers.push_back(sub);
 
-      auto free_move_srv_client = this->create_client<std_srvs::srv::SetBool>(
-        topic + "set_free_move");
+      auto free_move_srv_client = this->create_publisher<std_msgs::msg::Bool>(
+        topic + "set_free_move", rclcpp::QoS(10).reliable());
       strut_free_move_clients.push_back(free_move_srv_client);
     }
 
@@ -58,13 +59,9 @@ public:
         const std_srvs::srv::SetBool::Request::SharedPtr request,
         std_srvs::srv::SetBool::Response::SharedPtr response) {
         for (auto & client : this->strut_free_move_clients) {
-          auto result = client->async_send_request(request);
-          auto call_r = rclcpp::spin_until_future_complete(shared_from_this(), result, 1s);
-          if (call_r != rclcpp::FutureReturnCode::SUCCESS) {
-            // call failed, time to return
-            response->success = false;
-            return;
-          }
+          std_msgs::msg::Bool req_msg;
+          req_msg.data = request->data;
+          client->publish(req_msg);
         }
         response->success = true;
       });
@@ -112,7 +109,7 @@ private:
 
   std::vector<rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr> strut_publishers;
   std::vector<rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr> strut_subscribers;
-  std::vector<rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr> strut_free_move_clients;
+  std::vector<rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr> strut_free_move_clients;
 
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr pose_sub;
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr free_move_service;
